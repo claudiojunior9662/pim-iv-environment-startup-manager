@@ -1,0 +1,191 @@
+<?xml version="1.0"?>
+<interface>
+  <requires lib="gtk+" version="2.16"/>
+  <!-- interface-naming-policy project-wide -->
+  <object class="GtkWindow" id="login_window">
+    <property name="width_request">400</property>
+    <property name="height_request">400</property>
+    <property name="title" translatable="yes">Login</property>
+    <property name="icon">gtk-dialog-authentication</property>
+    <property name="opacity">0.98999999999999999</property>
+    <signal name="destroy" handler="on_main_window_destroy"/>
+    <child>
+      <object class="GtkVBox" id="view_login">
+        <property name="visible">True</property>
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkImage" id="image1">
+            <property name="visible">True</property>
+            <property name="stock">gtk-dialog-authentication</property>
+            <property name="icon-size">5</property>
+          </object>
+          <packing>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="faca_login">
+            <property name="visible">True</property>
+            <property name="label" translatable="yes">Fa&#xE7;a o login</property>
+            <attributes>
+              <attribute name="weight">bold</attribute>
+            </attributes>
+          </object>
+          <packing>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkEntry" id="user_login">
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="max_length">150</property>
+            <property name="invisible_char">&#x25CF;</property>
+            <property name="text" translatable="yes">Usu&#xE1;rio</property>
+          </object>
+          <packing>
+            <property name="position">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkEntry" id="user_password">
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="visibility">False</property>
+            <property name="invisible_char">&#x25CF;</property>
+            <property name="text" translatable="yes">Senha</property>
+          </object>
+          <packing>
+            <property name="position">3</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkButton" id="login_button">
+            <property name="label" translatable="yes">Login</property>
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="receives_default">True</property>
+            <signal name="clicked" handler="on_login_button_clicked"/>
+          </object>
+          <packing>
+            <property name="position">4</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="copyright">
+            <property name="visible">True</property>
+            <property name="label" translatable="yes">(C) 2025</property>
+            <attributes>
+              <attribute name="foreground">#b649acceacce</attribute>
+            </attributes>
+          </object>
+          <packing>
+            <property name="position">5</property>
+          </packing>
+        </child>
+        <child>
+          <placeholder/>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkRecentAction" id="recentaction1">
+    <property name="limit">10</property>
+  </object>
+  <object class="GtkMessageDialog" id="message_dialog">
+    <property name="border_width">5</property>
+    <property name="title" translatable="yes">Aviso</property>
+    <property name="type_hint">normal</property>
+    <property name="skip_taskbar_hint">True</property>
+    <property name="has_separator">False</property>
+    <property name="message_type">warning</property>
+    <property name="buttons">ok</property>
+    <child internal-child="vbox">
+      <object class="GtkVBox" id="dialog-vbox3">
+        <property name="visible">True</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">2</property>
+        <child internal-child="action_area">
+          <object class="GtkHButtonBox" id="dialog-action_area3">
+            <property name="visible">True</property>
+            <property name="layout_style">end</property>
+            <child>
+              <placeholder/>
+            </child>
+            <child>
+              <placeholder/>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="pack_type">end</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkWindow" id="admin_main_window">
+    <child>
+      <object class="GtkVBox" id="vbox1">
+        <property name="visible">True</property>
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkImage" id="image1">
+            <property name="visible">True</property>
+            <property name="stock">gtk-properties</property>
+            <property name="icon-size">6</property>
+          </object>
+          <packing>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkHBox" id="hbox1">
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkButton" id="new_user_button">
+                <property name="label" translatable="yes">Novo usu&#xE1;rio</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <signal name="clicked" handler="on_new_user_button_clicked"/>
+              </object>
+              <packing>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="list_user_button">
+                <property name="label" translatable="yes">Listar usu&#xE1;rios</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <signal name="clicked" handler="on_list_user_button_clicked"/>
+              </object>
+              <packing>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="exit_button">
+                <property name="label" translatable="yes">gtk-quit</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
+                <signal name="clicked" handler="on_exit_button_clicked"/>
+              </object>
+              <packing>
+                <property name="position">2</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>
