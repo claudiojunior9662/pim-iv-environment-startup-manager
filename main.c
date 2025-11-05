@@ -245,6 +245,8 @@ void load_clients_to_treeview()
     GtkListStore *store = GTK_LIST_STORE(gtk_builder_get_object(builder, "client_list_store"));
     GtkTreeIter iter;
 
+    printf("DEBUG: client list store load\n");
+
     if (!store)
     {
         printf("DEBUG: Erro ao obter client_list_store\n");
@@ -257,19 +259,35 @@ void load_clients_to_treeview()
     FILE *file = fopen("clients.txt", "r");
     if (file == NULL)
     {
-        printf("DEBUG: Arquivo clients.txt não encontrado\n");
         return;
     }
 
+    printf("DEBUG: client file opened\n");
+
     char line[1024];
-    printf("DEBUG: Carregando clientes...\n");
 
     while (fgets(line, sizeof(line), file))
     {
         // Remove quebra de linha
         line[strcspn(line, "\n")] = 0;
 
-        // Parse CSV: ID,name,responsible,company_name,encrypted_cnpj,corporate_reason,fantasy,encrypted_phone,mail,opening_date,street,number,neighborhood,city,state,postal_code
+        // Parse CSV:
+        // ID,
+        // name,
+        // responsible,
+        // company_name,
+        // encrypted_cnpj,
+        // corporate_reason,
+        // fantasy,
+        // encrypted_phone,
+        // mail,
+        // opening_date,
+        // street,number,
+        // neighborhood,
+        // city,
+        // state,
+        // postal_code
+
         char *tokens[16];
         int token_count = 0;
         char *token = strtok(line, ",");
@@ -280,35 +298,33 @@ void load_clients_to_treeview()
             token = strtok(NULL, ",");
         }
 
-        if (token_count >= 9)
-        { // Pelo menos até o email
-            int id = atoi(tokens[0]);
-            char *name = tokens[1];
-            char *responsible = tokens[2];
-            char *company_name = tokens[3];
-            char *encrypted_cnpj = tokens[4];
-            char *mail = tokens[8];
+        // if (token_count >= 14)
+        // {
+        char *name = tokens[1];
+        char *fantasy = tokens[6];
+        char *city = tokens[12];
+        char *state = tokens[13];
+        char *encrypted_cnpj = tokens[4];
 
-            // Descriptografa CNPJ para exibição
-            char decrypted_cnpj[50];
-            strcpy(decrypted_cnpj, encrypted_cnpj);
-            simple_encrypt_decrypt(decrypted_cnpj, "clientkey123");
+        // Descriptografa CNPJ para exibição
+        char decrypted_cnpj[50];
+        strcpy(decrypted_cnpj, encrypted_cnpj);
+        simple_encrypt_decrypt(decrypted_cnpj, "clientkey123");
 
-            gtk_list_store_append(store, &iter);
-            gtk_list_store_set(store, &iter,
-                               0, id,             // Coluna 0: ID
-                               1, name,           // Coluna 1: Nome
-                               2, responsible,    // Coluna 2: Responsável
-                               3, company_name,   // Coluna 3: Razão Social
-                               4, decrypted_cnpj, // Coluna 4: CNPJ (descriptografado)
-                               5, mail,           // Coluna 5: Email
-                               -1);
-            printf("DEBUG: Cliente carregado - ID: %d, Nome: %s, CNPJ: %s\n", id, name, decrypted_cnpj);
-        }
+        gtk_list_store_append(store, &iter);
+        gtk_list_store_set(store, &iter,
+                           0, name,           // Coluna 1: Nome
+                           1, decrypted_cnpj, // Coluna 2: CNPJ (descriptografado)
+                           2, fantasy,        // Coluna 3: Fantasia
+                           3, city,           // Coluna 4: Cidade
+                           4, state,          // Coluna 5: Estado
+                           -1);
+        // }
     }
 
+    printf("DEBUG: client file closed\n");
+
     fclose(file);
-    printf("DEBUG: Carregamento de clientes concluído\n");
 }
 
 void on_main_window_destroy(GtkWidget *widget, gpointer data)
@@ -448,9 +464,7 @@ void on_user_list_back_btn_clicked(GtkWidget *widget, gpointer data)
 
 void on_user_list_bt_clicked(GtkWidget *widget, gpointer data)
 {
-    printf("DEBUG: Botão listar usuários clicado\n");
     load_users_to_treeview();
-    printf("DEBUG: Usuários carregados no TreeView\n");
 }
 
 void on_client_view_btn_clicked(GtkWidget *widget, gpointer data)
@@ -497,7 +511,6 @@ void on_client_create_confirm_btn_clicked(GtkWidget *widget, gpointer data)
         !client_create_address_street_entry || !client_create_address_number_entry || !client_create_address_neighborhood_entry ||
         !client_create_address_city_entry || !client_create_address_state_entry || !client_create_address_postal_code_entry)
     {
-        printf("DEBUG: Erro ao obter widgets de entrada\n");
         advice("Erro", "Erro interno da aplicação.", "dialog-error");
         return;
     }
@@ -519,13 +532,10 @@ void on_client_create_confirm_btn_clicked(GtkWidget *widget, gpointer data)
     const char *state = gtk_entry_get_text(GTK_ENTRY(client_create_address_state_entry));
     const char *postal_code = gtk_entry_get_text(GTK_ENTRY(client_create_address_postal_code_entry));
 
-    printf("DEBUG: Dados obtidos - Nome: %s, CNPJ: %s\n", name, cnpj);
-
     // Validação de campos obrigatórios
     if (strlen(name) == 0 || strlen(responsible) == 0 || strlen(company_name) == 0 ||
         strlen(cnpj) == 0 || strlen(phone) == 0 || strlen(mail) == 0)
     {
-        printf("DEBUG: Campos obrigatórios não preenchidos\n");
         advice("Erro", "Por favor, preencha todos os campos obrigatórios:\nNome, Responsável, Razão Social, CNPJ, Telefone e Email.", "dialog-error");
         return;
     }
@@ -533,7 +543,6 @@ void on_client_create_confirm_btn_clicked(GtkWidget *widget, gpointer data)
     // Validação básica do CNPJ (apenas comprimento)
     if (strlen(cnpj) < 14)
     {
-        printf("DEBUG: CNPJ inválido\n");
         advice("Erro", "CNPJ deve ter pelo menos 14 dígitos.", "dialog-error");
         return;
     }
@@ -541,7 +550,6 @@ void on_client_create_confirm_btn_clicked(GtkWidget *widget, gpointer data)
     // Verifica se o cliente já existe pelo CNPJ
     if (client_exists_by_cnpj(cnpj))
     {
-        printf("DEBUG: Cliente já existe\n");
         advice("Erro", "Cliente com este CNPJ já está cadastrado.", "dialog-error");
         return;
     }
@@ -580,17 +588,22 @@ void on_client_create_btn_clicked(GtkWidget *widget, gpointer data)
 
 void on_client_list_btn_clicked(GtkWidget *widget, gpointer data)
 {
-    // gtk_stack_set_visible_child_name(stack, "view_common_user");
-
-    // printf("DEBUG: Botão listar clientes clicado\n");
-    // gtk_stack_set_visible_child_name(stack, "view_client_list");
-    // load_clients_to_treeview();
-    // printf("DEBUG: Clientes carregados no TreeView\n");
+    gtk_stack_set_visible_child_name(stack, "view_client_list");
 }
 
 void on_client_view_back_btn_clicked(GtkWidget *widget, gpointer data)
 {
     gtk_stack_set_visible_child_name(stack, "view_common_user");
+}
+
+void on_client_list_back_btn_clicked(GtkWidget *widget, gpointer data)
+{
+    gtk_stack_set_visible_child_name(stack, "view_client_menu");
+}
+
+void on_client_list_bt_clicked(GtkWidget *widget, gpointer data)
+{
+    load_clients_to_treeview();
 }
 
 int main(int argc, char *argv[])
@@ -617,6 +630,8 @@ int main(int argc, char *argv[])
         "on_client_create_btn_clicked", G_CALLBACK(on_client_create_btn_clicked),
         "on_client_list_btn_clicked", G_CALLBACK(on_client_list_btn_clicked),
         "on_client_view_back_btn_clicked", G_CALLBACK(on_client_view_back_btn_clicked),
+        "on_client_list_back_btn_clicked", G_CALLBACK(on_client_list_back_btn_clicked),
+        "on_client_list_bt_clicked", G_CALLBACK(on_client_list_bt_clicked),
         NULL);
 
     gtk_builder_connect_signals(builder, NULL);
