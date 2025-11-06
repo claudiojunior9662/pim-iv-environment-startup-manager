@@ -3,12 +3,16 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 GtkBuilder *builder;
 GtkWidget *window;
 GtkStack *stack;
 
 char *logged_username;
+char *selected_client_cnpj;
+char *selected_client_search_main_view;
+char *selected_client_search_destiny_view;
 
 // Funções para gerenciamento de usuários
 int get_next_user_id()
@@ -136,16 +140,74 @@ void load_users_to_treeview()
     printf("DEBUG: Carregamento de usuários concluído\n");
 }
 
-// Funções para criptografia simples (XOR com chave)
+// Funções para criptografia simples (XOR com chave + conversão para hex)
 void simple_encrypt_decrypt(char *data, const char *key)
 {
     int key_len = strlen(key);
     int data_len = strlen(data);
 
+    // Buffer temporário para armazenar dados XOR
+    char temp_data[100];
+    strcpy(temp_data, data);
+
+    // Aplica XOR
     for (int i = 0; i < data_len; i++)
     {
-        data[i] ^= key[i % key_len];
+        temp_data[i] ^= key[i % key_len];
     }
+
+    // Converte para representação hexadecimal para evitar caracteres de controle
+    char hex_result[200];
+    hex_result[0] = '\0';
+
+    for (int i = 0; i < data_len; i++)
+    {
+        char hex_byte[3];
+        sprintf(hex_byte, "%02X", (unsigned char)temp_data[i]);
+        strcat(hex_result, hex_byte);
+    }
+
+    // Copia resultado de volta
+    strcpy(data, hex_result);
+}
+
+// Função para descriptografar dados que estão em formato hexadecimal
+void simple_decrypt_from_hex(char *hex_data, const char *key)
+{
+    int hex_len = strlen(hex_data);
+    int key_len = strlen(key);
+
+    // Verifica se o comprimento é par (cada byte = 2 caracteres hex)
+    if (hex_len % 2 != 0)
+    {
+        return; // Dados inválidos
+    }
+
+    int byte_count = hex_len / 2;
+    char temp_data[100];
+
+    // Converte de hex para bytes
+    for (int i = 0; i < byte_count; i++)
+    {
+        char hex_byte[3];
+        hex_byte[0] = hex_data[i * 2];
+        hex_byte[1] = hex_data[i * 2 + 1];
+        hex_byte[2] = '\0';
+
+        temp_data[i] = (char)strtol(hex_byte, NULL, 16);
+    }
+
+    // Aplica XOR para descriptografar
+    for (int i = 0; i < byte_count; i++)
+    {
+        temp_data[i] ^= key[i % key_len];
+    }
+
+    // Termina a string
+    temp_data[byte_count] = '\0';
+
+    // Copia resultado de volta
+    strcpy(hex_data, temp_data);
 }
 
 // Funções para gerenciamento de clientes
@@ -309,7 +371,7 @@ void load_clients_to_treeview()
         // Descriptografa CNPJ para exibição
         char decrypted_cnpj[50];
         strcpy(decrypted_cnpj, encrypted_cnpj);
-        simple_encrypt_decrypt(decrypted_cnpj, "clientkey123");
+        simple_decrypt_from_hex(decrypted_cnpj, "clientkey123");
 
         gtk_list_store_append(store, &iter);
         gtk_list_store_set(store, &iter,
@@ -325,6 +387,342 @@ void load_clients_to_treeview()
     printf("DEBUG: client file closed\n");
 
     fclose(file);
+}
+
+bool search_client_by_cnpj(const char *cnpj)
+{
+    printf("DEBUG: Procurando cliente com CNPJ: %s\n", cnpj);
+
+    FILE *file = fopen("clients.txt", "r");
+    if (file == NULL)
+    {
+        printf("DEBUG: Arquivo clients.txt não encontrado\n");
+        return false;
+    }
+
+    char line[1024];
+    char encrypted_cnpj[50];
+    strcpy(encrypted_cnpj, cnpj);
+    simple_encrypt_decrypt(encrypted_cnpj, "clientkey123"); // Criptografa para comparar
+
+    // Debug: mostra CNPJ criptografado
+    printf("DEBUG: CNPJ original: %s\n", cnpj);
+    printf("DEBUG: CNPJ criptografado: %s\n", encrypted_cnpj);
+    while (fgets(line, sizeof(line), file))
+    {
+        // Remove quebra de linha
+        line[strcspn(line, "\n")] = 0;
+
+        // Pula linhas vazias
+        if (strlen(line) == 0)
+        {
+            continue;
+        }
+
+        // Parse CSV para obter o CNPJ criptografado (posição 4)
+        char temp_line[1024];
+        strcpy(temp_line, line); // Preserva linha original para debug
+
+        char *tokens[16];
+        int token_count = 0;
+        char *token = strtok(line, ",");
+
+        while (token != NULL && token_count < 16)
+        {
+            tokens[token_count++] = token;
+            token = strtok(NULL, ",");
+        }
+
+        // Verifica se temos tokens suficientes (pelo menos ID, name, responsible, company_name, cnpj)
+        if (token_count >= 5)
+        {
+            char *stored_encrypted_cnpj = tokens[4];
+            printf("DEBUG: Comparando com registro - tokens: %d, CNPJ armazenado: [dados criptografados]\n", token_count);
+
+            // Debug: mostra CNPJ armazenado
+            printf("DEBUG: CNPJ armazenado: %s\n", stored_encrypted_cnpj);
+
+            if (stored_encrypted_cnpj != NULL && g_strcmp0(encrypted_cnpj, stored_encrypted_cnpj) == 0)
+            {
+                printf("DEBUG: Cliente encontrado! CNPJs criptografados são iguais\n");
+
+                // Armazena o CNPJ na variável global (descriptografado)
+                if (selected_client_cnpj)
+                {
+                    g_free(selected_client_cnpj);
+                }
+                selected_client_cnpj = g_strdup(cnpj);
+
+                fclose(file);
+                return true;
+            }
+            else
+            {
+                printf("DEBUG: CNPJs criptografados são diferentes\n");
+            }
+        }
+        else
+        {
+            printf("DEBUG: Linha com tokens insuficientes (%d): %s\n", token_count, temp_line);
+        }
+    }
+
+    fclose(file);
+    printf("DEBUG: Cliente não encontrado após verificar todo o arquivo\n");
+    return false;
+}
+
+// Funções para gerenciamento de resíduos
+int get_next_waste_id()
+{
+    FILE *file = fopen("wastes.txt", "r");
+    int last_id = 0;
+    char line[1024];
+
+    if (file == NULL)
+    {
+        return 1; // Primeiro resíduo
+    }
+
+    while (fgets(line, sizeof(line), file))
+    {
+        int id;
+        if (sscanf(line, "%d,", &id) == 1)
+        {
+            if (id > last_id)
+            {
+                last_id = id;
+            }
+        }
+    }
+
+    fclose(file);
+    return last_id + 1;
+}
+
+void add_waste_record(const char *client_cnpj, const char *waste_quantity, const char *logged_user)
+{
+    int new_id = get_next_waste_id();
+
+    FILE *file = fopen("wastes.txt", "a");
+    if (file == NULL)
+    {
+        printf("DEBUG: Erro ao abrir arquivo wastes.txt para escrita\n");
+        return;
+    }
+
+    // Criptografa o CNPJ para armazenar (mesma chave usada para clientes)
+    char encrypted_cnpj[50];
+    strcpy(encrypted_cnpj, client_cnpj);
+    simple_encrypt_decrypt(encrypted_cnpj, "clientkey123");
+
+    // Obtém data e hora atual
+    time_t rawtime;
+    struct tm *timeinfo;
+    char timestamp[100];
+
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", timeinfo);
+
+    // Formato CSV: ID,encrypted_cnpj,waste_quantity,logged_user,timestamp
+    fprintf(file, "%d,%s,%s,%s,%s\n", new_id, encrypted_cnpj, waste_quantity, logged_user, timestamp);
+
+    fclose(file);
+    printf("DEBUG: Registro de resíduo salvo - ID: %d, CNPJ: %s, Quantidade: %s\n", new_id, client_cnpj, waste_quantity);
+}
+
+double get_client_waste_quantity(const char *client_cnpj)
+{
+    printf("DEBUG: Buscando quantidade de resíduos para CNPJ: %s\n", client_cnpj);
+
+    FILE *file = fopen("wastes.txt", "r");
+    if (file == NULL)
+    {
+        printf("DEBUG: Arquivo wastes.txt não encontrado\n");
+        return 0.0;
+    }
+
+    char line[1024];
+    char encrypted_cnpj[50];
+    strcpy(encrypted_cnpj, client_cnpj);
+    simple_encrypt_decrypt(encrypted_cnpj, "clientkey123"); // Criptografa para comparar
+
+    double total_quantity = 0.0;
+
+    while (fgets(line, sizeof(line), file))
+    {
+        // Remove quebra de linha
+        line[strcspn(line, "\n")] = 0;
+
+        // Parse CSV: ID,encrypted_cnpj,waste_quantity,logged_user,timestamp
+        char *tokens[5];
+        int token_count = 0;
+        char *token = strtok(line, ",");
+
+        while (token != NULL && token_count < 5)
+        {
+            tokens[token_count++] = token;
+            token = strtok(NULL, ",");
+        }
+
+        if (token_count >= 3)
+        {
+            char *stored_encrypted_cnpj = tokens[1];
+            char *quantity_str = tokens[2];
+
+            if (g_strcmp0(encrypted_cnpj, stored_encrypted_cnpj) == 0)
+            {
+                double quantity = strtod(quantity_str, NULL);
+                total_quantity += quantity;
+                printf("DEBUG: Encontrado registro com quantidade: %s (%.2f)\n", quantity_str, quantity);
+            }
+        }
+    }
+
+    fclose(file);
+    printf("DEBUG: Quantidade total de resíduos: %.2f\n", total_quantity);
+    return total_quantity;
+}
+
+bool update_client_waste_quantity(const char *client_cnpj, const char *new_quantity, const char *logged_user)
+{
+    printf("DEBUG: Atualizando quantidade de resíduos para CNPJ: %s\n", client_cnpj);
+
+    // Primeiro, lemos todos os registros
+    FILE *file = fopen("wastes.txt", "r");
+    if (file == NULL)
+    {
+        printf("DEBUG: Arquivo wastes.txt não encontrado\n");
+        return false;
+    }
+
+    char lines[1000][1024]; // Assume máximo 1000 registros
+    int line_count = 0;
+    bool found = false;
+
+    char encrypted_cnpj[50];
+    strcpy(encrypted_cnpj, client_cnpj);
+    simple_encrypt_decrypt(encrypted_cnpj, "clientkey123");
+
+    // Lê TODAS as linhas do arquivo primeiro
+    while (fgets(lines[line_count], sizeof(lines[line_count]), file) && line_count < 1000)
+    {
+        // Remove quebra de linha
+        lines[line_count][strcspn(lines[line_count], "\n")] = 0;
+        line_count++;
+    }
+
+    fclose(file);
+    printf("DEBUG: Total de linhas lidas: %d\n", line_count);
+
+    // Agora processa as linhas em memória
+    for (int i = 0; i < line_count; i++)
+    {
+        // Verifica se esta linha é do cliente
+        char temp_line[1024];
+        strcpy(temp_line, lines[i]);
+
+        char *tokens[5];
+        int token_count = 0;
+        char *token = strtok(temp_line, ",");
+
+        while (token != NULL && token_count < 5)
+        {
+            tokens[token_count++] = token;
+            token = strtok(NULL, ",");
+        }
+
+        if (token_count >= 2 && g_strcmp0(encrypted_cnpj, tokens[1]) == 0)
+        {
+            // Atualiza esta linha
+            time_t rawtime;
+            struct tm *timeinfo;
+            char timestamp[100];
+
+            time(&rawtime);
+            timeinfo = localtime(&rawtime);
+            strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", timeinfo);
+
+            snprintf(lines[i], sizeof(lines[i]),
+                     "%s,%s,%s,%s,%s", tokens[0], tokens[1], new_quantity, logged_user, timestamp);
+            found = true;
+            printf("DEBUG: Registro na linha %d atualizado\n", i + 1);
+            break; // Para na primeira ocorrência encontrada
+        }
+    }
+
+    if (!found)
+    {
+        printf("DEBUG: Nenhum registro encontrado para atualizar\n");
+        return false;
+    }
+
+    // Reescreve o arquivo com TODAS as linhas
+    file = fopen("wastes.txt", "w");
+    if (file == NULL)
+    {
+        printf("DEBUG: Erro ao abrir arquivo para escrita\n");
+        return false;
+    }
+
+    for (int i = 0; i < line_count; i++)
+    {
+        fprintf(file, "%s\n", lines[i]);
+    }
+
+    fclose(file);
+    printf("DEBUG: Arquivo atualizado com sucesso - %d linhas escritas\n", line_count);
+    return true;
+}
+
+void populate_client_waste_cnpj()
+{
+    printf("DEBUG: Preenchendo CNPJ e quantidade do cliente selecionado\n");
+
+    GtkWidget *client_waste_entry_readonly = GTK_WIDGET(gtk_builder_get_object(builder, "client_waste_entry_readonly"));
+    GtkWidget *client_waste_quantity_entry = GTK_WIDGET(gtk_builder_get_object(builder, "client_waste_quantity_entry"));
+
+    if (!client_waste_entry_readonly)
+    {
+        printf("DEBUG: Widget client_waste_entry_readonly não encontrado\n");
+        return;
+    }
+
+    if (!client_waste_quantity_entry)
+    {
+        printf("DEBUG: Widget client_waste_quantity_entry não encontrado\n");
+        return;
+    }
+
+    if (selected_client_cnpj && strlen(selected_client_cnpj) > 0)
+    {
+        // Preenche o CNPJ
+        gtk_entry_set_text(GTK_ENTRY(client_waste_entry_readonly), selected_client_cnpj);
+        printf("DEBUG: CNPJ preenchido: %s\n", selected_client_cnpj);
+
+        // Busca e preenche a quantidade existente
+        double existing_quantity = get_client_waste_quantity(selected_client_cnpj);
+
+        if (existing_quantity > 0.0)
+        {
+            char quantity_str[50];
+            snprintf(quantity_str, sizeof(quantity_str), "%.2f", existing_quantity);
+            gtk_entry_set_text(GTK_ENTRY(client_waste_quantity_entry), quantity_str);
+            printf("DEBUG: Quantidade existente preenchida: %s\n", quantity_str);
+        }
+        else
+        {
+            gtk_entry_set_text(GTK_ENTRY(client_waste_quantity_entry), "");
+            printf("DEBUG: Nenhuma quantidade existente encontrada\n");
+        }
+    }
+    else
+    {
+        gtk_entry_set_text(GTK_ENTRY(client_waste_entry_readonly), "");
+        gtk_entry_set_text(GTK_ENTRY(client_waste_quantity_entry), "");
+        printf("DEBUG: Nenhum cliente selecionado\n");
+    }
 }
 
 void on_main_window_destroy(GtkWidget *widget, gpointer data)
@@ -474,8 +872,19 @@ void on_client_view_btn_clicked(GtkWidget *widget, gpointer data)
 
 void on_waste_view_btn_clicked(GtkWidget *widget, gpointer data)
 {
-    // implementar
-    gtk_main_quit();
+    if (selected_client_search_main_view)
+    {
+        g_free(selected_client_search_main_view);
+    }
+    selected_client_search_main_view = g_strdup("view_common_user");
+
+    if (selected_client_search_destiny_view)
+    {
+        g_free(selected_client_search_destiny_view);
+    }
+    selected_client_search_destiny_view = g_strdup("view_waste_create_edit");
+
+    gtk_stack_set_visible_child_name(stack, "view_search_client");
 }
 
 void on_client_create_back_btn_clicked(GtkWidget *widget, gpointer data)
@@ -541,9 +950,9 @@ void on_client_create_confirm_btn_clicked(GtkWidget *widget, gpointer data)
     }
 
     // Validação básica do CNPJ (apenas comprimento)
-    if (strlen(cnpj) < 14)
+    if (strlen(cnpj) != 14)
     {
-        advice("Erro", "CNPJ deve ter pelo menos 14 dígitos.", "dialog-error");
+        advice("Erro", "CNPJ deve ter exatamente 14 dígitos.", "dialog-error");
         return;
     }
 
@@ -606,6 +1015,187 @@ void on_client_list_bt_clicked(GtkWidget *widget, gpointer data)
     load_clients_to_treeview();
 }
 
+void on_client_search_back_btn_clicked(GtkWidget *widget, gpointer data)
+{
+    gtk_stack_set_visible_child_name(stack, "view_common_user");
+}
+
+void on_client_search_confirm_btn_clicked(GtkWidget *widget, gpointer data)
+{
+    printf("DEBUG: Botão buscar cliente clicado\n");
+
+    // Obtém o widget de entrada do CNPJ
+    GtkWidget *client_search_cnpj_entry = GTK_WIDGET(gtk_builder_get_object(builder, "client_search_entry"));
+
+    if (!client_search_cnpj_entry)
+    {
+        printf("DEBUG: Erro ao obter widget client_search_cnpj_entry\n");
+        advice("Erro", "Erro interno da aplicação.", "dialog-error");
+        return;
+    }
+
+    // Obtém o CNPJ digitado
+    const char *cnpj_text = gtk_entry_get_text(GTK_ENTRY(client_search_cnpj_entry));
+
+    printf("DEBUG: CNPJ a ser procurado: '%s'\n", cnpj_text);
+
+    // Validação de campo vazio
+    if (strlen(cnpj_text) == 0)
+    {
+        printf("DEBUG: CNPJ não informado\n");
+        advice("Erro", "Por favor, digite o CNPJ do cliente.", "dialog-error");
+        return;
+    }
+
+    // Validação do CNPJ (comprimento exato e apenas números)
+    if (strlen(cnpj_text) != 14)
+    {
+        printf("DEBUG: CNPJ inválido - deve ter exatamente 14 dígitos\n");
+        advice("Erro", "CNPJ deve ter exatamente 14 dígitos.", "dialog-error");
+        return;
+    }
+
+    // Verifica se contém apenas dígitos
+    for (int i = 0; i < strlen(cnpj_text); i++)
+    {
+        if (cnpj_text[i] < '0' || cnpj_text[i] > '9')
+        {
+            printf("DEBUG: CNPJ inválido - contém caracteres não numéricos\n");
+            advice("Erro", "CNPJ deve conter apenas números.", "dialog-error");
+            return;
+        }
+    }
+
+    // Busca o cliente pelo CNPJ
+    if (search_client_by_cnpj(cnpj_text))
+    {
+        printf("DEBUG: Cliente encontrado e CNPJ armazenado: %s\n", selected_client_cnpj);
+
+        // Navega para a próxima tela ou carrega dados específicos do cliente
+        gtk_stack_set_visible_child_name(stack, selected_client_search_destiny_view);
+
+        // Preenche o CNPJ no campo readonly se for a tela de waste
+        if (g_strcmp0(selected_client_search_destiny_view, "view_waste_create_edit") == 0)
+        {
+            populate_client_waste_cnpj();
+        }
+    }
+    else
+    {
+        printf("DEBUG: Cliente não encontrado\n");
+        advice("Erro", "Cliente com este CNPJ não foi encontrado. Tente novamente ou cadastre o cliente.", "dialog-error");
+
+        // Limpa a variável global se não encontrou
+        if (selected_client_cnpj)
+        {
+            g_free(selected_client_cnpj);
+            selected_client_cnpj = NULL;
+        }
+    }
+}
+
+void on_client_waste_save_back_btn_clicked(GtkWidget *widget, gpointer data)
+{
+    gtk_stack_set_visible_child_name(stack, selected_client_search_main_view);
+}
+
+void on_client_waste_save_btn_clicked(GtkWidget *widget, gpointer data)
+{
+    printf("DEBUG: Botão salvar resíduo clicado\n");
+
+    // Obtém os widgets de entrada
+    GtkWidget *client_waste_entry_readonly = GTK_WIDGET(gtk_builder_get_object(builder, "client_waste_entry_readonly"));
+    GtkWidget *client_waste_quantity_entry = GTK_WIDGET(gtk_builder_get_object(builder, "client_waste_quantity_entry"));
+
+    if (!client_waste_entry_readonly || !client_waste_quantity_entry)
+    {
+        printf("DEBUG: Erro ao obter widgets de entrada\n");
+        advice("Erro", "Erro interno da aplicação.", "dialog-error");
+        return;
+    }
+
+    // Obtém os valores dos campos
+    const char *cnpj_text = gtk_entry_get_text(GTK_ENTRY(client_waste_entry_readonly));
+    const char *quantity_text = gtk_entry_get_text(GTK_ENTRY(client_waste_quantity_entry));
+
+    printf("DEBUG: CNPJ: '%s', Quantidade: '%s'\n", cnpj_text, quantity_text);
+
+    // Validação de campos vazios
+    if (strlen(cnpj_text) == 0)
+    {
+        printf("DEBUG: CNPJ não informado\n");
+        advice("Erro", "CNPJ do cliente não encontrado. Realize uma nova busca.", "dialog-error");
+        return;
+    }
+
+    if (strlen(quantity_text) == 0)
+    {
+        printf("DEBUG: Quantidade não informada\n");
+        advice("Erro", "Por favor, informe a quantidade de resíduos.", "dialog-error");
+        return;
+    }
+
+    // Validação da quantidade (deve ser um número)
+    char *endptr;
+    double quantity = strtod(quantity_text, &endptr);
+    if (*endptr != '\0' || quantity <= 0)
+    {
+        printf("DEBUG: Quantidade inválida: %s\n", quantity_text);
+        advice("Erro", "A quantidade deve ser um número válido maior que zero.", "dialog-error");
+        return;
+    }
+
+    // Verifica se existe um usuário logado
+    if (!logged_username || strlen(logged_username) == 0)
+    {
+        printf("DEBUG: Usuário não logado\n");
+        advice("Erro", "Usuário não identificado. Faça login novamente.", "dialog-error");
+        return;
+    }
+
+    // Verifica se o CNPJ corresponde ao cliente selecionado
+    if (!selected_client_cnpj || g_strcmp0(cnpj_text, selected_client_cnpj) != 0)
+    {
+        printf("DEBUG: CNPJ não corresponde ao cliente selecionado\n");
+        advice("Erro", "CNPJ não corresponde ao cliente selecionado. Realize uma nova busca.", "dialog-error");
+        return;
+    }
+
+    // Verifica se já existe registro para este cliente
+    double existing_quantity = get_client_waste_quantity(cnpj_text);
+
+    if (existing_quantity > 0.0)
+    {
+        printf("DEBUG: Atualizando registro existente...\n");
+        // Atualiza registro existente
+        if (update_client_waste_quantity(cnpj_text, quantity_text, logged_username))
+        {
+            printf("DEBUG: Registro atualizado com sucesso\n");
+            advice("Sucesso", "Registro de resíduo atualizado com sucesso!", "emblem-default");
+        }
+        else
+        {
+            printf("DEBUG: Erro ao atualizar registro\n");
+            advice("Erro", "Erro ao atualizar o registro. Tente novamente.", "dialog-error");
+            return;
+        }
+    }
+    else
+    {
+        printf("DEBUG: Criando novo registro...\n");
+        // Cria novo registro
+        add_waste_record(cnpj_text, quantity_text, logged_username);
+        printf("DEBUG: Novo registro criado com sucesso\n");
+        advice("Sucesso", "Registro de resíduo salvo com sucesso!", "emblem-default");
+    }
+
+    // Limpa o campo de quantidade
+    gtk_entry_set_text(GTK_ENTRY(client_waste_quantity_entry), "");
+
+    // Volta para a tela anterior
+    gtk_stack_set_visible_child_name(stack, selected_client_search_main_view);
+}
+
 int main(int argc, char *argv[])
 {
     gtk_init(&argc, &argv);
@@ -632,6 +1222,10 @@ int main(int argc, char *argv[])
         "on_client_view_back_btn_clicked", G_CALLBACK(on_client_view_back_btn_clicked),
         "on_client_list_back_btn_clicked", G_CALLBACK(on_client_list_back_btn_clicked),
         "on_client_list_bt_clicked", G_CALLBACK(on_client_list_bt_clicked),
+        "on_client_search_back_btn_clicked", G_CALLBACK(on_client_search_back_btn_clicked),
+        "on_client_search_confirm_btn_clicked", G_CALLBACK(on_client_search_confirm_btn_clicked),
+        "on_client_waste_save_back_btn_clicked", G_CALLBACK(on_client_waste_save_back_btn_clicked),
+        "on_client_waste_save_btn_clicked", G_CALLBACK(on_client_waste_save_btn_clicked),
         NULL);
 
     gtk_builder_connect_signals(builder, NULL);
