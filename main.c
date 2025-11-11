@@ -4,6 +4,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
+
+#ifdef _WIN32
+#include <direct.h>
+#define MKDIR(path) _mkdir(path)
+#else
+#include <sys/types.h>
+#define MKDIR(path) mkdir(path, 0755)
+#endif
 
 GtkBuilder *builder;
 GtkWidget *window;
@@ -1196,6 +1205,476 @@ void on_client_waste_save_btn_clicked(GtkWidget *widget, gpointer data)
     gtk_stack_set_visible_child_name(stack, selected_client_search_main_view);
 }
 
+void on_reports_view_btn_clicked(GtkWidget *widget, gpointer data)
+{
+    gtk_stack_set_visible_child_name(stack, "view_reports_generator");
+}
+
+void on_report_generator_back_btn_clicked(GtkWidget *widget, gpointer data)
+{
+    gtk_stack_set_visible_child_name(stack, "view_common_user");
+}
+
+// Função para criar diretório de relatórios
+void create_reports_directory()
+{
+    struct stat st = {0};
+
+    // Verifica se o diretório já existe
+    if (stat("reports", &st) == -1)
+    {
+        // Cria o diretório se não existir
+        if (MKDIR("reports") == 0)
+        {
+            printf("DEBUG: Diretório 'reports' criado com sucesso\n");
+        }
+        else
+        {
+            printf("DEBUG: Erro ao criar diretório 'reports'\n");
+        }
+    }
+    else
+    {
+        printf("DEBUG: Diretório 'reports' já existe\n");
+    }
+}
+
+// Função para gerar relatório de total de insumos tratados semestralmente
+void generate_waste_report_semestral(const char *format, const char *filename)
+{
+    printf("DEBUG: Gerando relatório semestral de insumos tratados\n");
+
+    FILE *waste_file = fopen("wastes.txt", "r");
+    if (waste_file == NULL)
+    {
+        printf("DEBUG: Arquivo wastes.txt não encontrado\n");
+        return;
+    }
+
+    // Estrutura para armazenar dados por semestre
+    typedef struct
+    {
+        int ano;
+        int semestre;
+        double total_quantidade;
+        int count_registros;
+    } SemestreData;
+
+    SemestreData semestres[20]; // Assumindo máximo 20 semestres
+    int semestre_count = 0;
+
+    char line[1024];
+    while (fgets(line, sizeof(line), waste_file))
+    {
+        line[strcspn(line, "\n")] = 0;
+
+        char *tokens[5];
+        int token_count = 0;
+        char *token = strtok(line, ",");
+
+        while (token != NULL && token_count < 5)
+        {
+            tokens[token_count++] = token;
+            token = strtok(NULL, ",");
+        }
+
+        if (token_count >= 5)
+        {
+            double quantidade = strtod(tokens[2], NULL);
+            char *timestamp = tokens[4];
+
+            // Parse da data (formato: YYYY-MM-DD HH:MM:SS)
+            int ano, mes;
+            if (sscanf(timestamp, "%d-%d", &ano, &mes) == 2)
+            {
+                int semestre = (mes <= 6) ? 1 : 2;
+
+                // Procura se já existe esse semestre
+                int encontrado = -1;
+                for (int i = 0; i < semestre_count; i++)
+                {
+                    if (semestres[i].ano == ano && semestres[i].semestre == semestre)
+                    {
+                        encontrado = i;
+                        break;
+                    }
+                }
+
+                if (encontrado >= 0)
+                {
+                    semestres[encontrado].total_quantidade += quantidade;
+                    semestres[encontrado].count_registros++;
+                }
+                else if (semestre_count < 20)
+                {
+                    semestres[semestre_count].ano = ano;
+                    semestres[semestre_count].semestre = semestre;
+                    semestres[semestre_count].total_quantidade = quantidade;
+                    semestres[semestre_count].count_registros = 1;
+                    semestre_count++;
+                }
+            }
+        }
+    }
+    fclose(waste_file);
+
+    // Gera o arquivo de acordo com o formato
+    FILE *report_file = fopen(filename, "w");
+    if (report_file == NULL)
+    {
+        printf("DEBUG: Erro ao criar arquivo de relatório\n");
+        return;
+    }
+
+    if (g_strcmp0(format, "CSV") == 0)
+    {
+        fprintf(report_file, "Ano,Semestre,Total_Insumos_Tratados,Numero_Registros\n");
+        for (int i = 0; i < semestre_count; i++)
+        {
+            fprintf(report_file, "%d,%d,%.2f,%d\n",
+                    semestres[i].ano, semestres[i].semestre,
+                    semestres[i].total_quantidade, semestres[i].count_registros);
+        }
+    }
+    else if (g_strcmp0(format, "XLS") == 0)
+    {
+        // Formato CSV compatível com Excel
+        fprintf(report_file, "Ano\tSemestre\tTotal Insumos Tratados\tNúmero de Registros\n");
+        for (int i = 0; i < semestre_count; i++)
+        {
+            fprintf(report_file, "%d\t%d\t%.2f\t%d\n",
+                    semestres[i].ano, semestres[i].semestre,
+                    semestres[i].total_quantidade, semestres[i].count_registros);
+        }
+    }
+    else // TXT
+    {
+        fprintf(report_file, "==========================================\n");
+        fprintf(report_file, "RELATÓRIO DE INSUMOS TRATADOS SEMESTRALMENTE\n");
+        fprintf(report_file, "==========================================\n\n");
+
+        for (int i = 0; i < semestre_count; i++)
+        {
+            fprintf(report_file, "Ano: %d - %dº Semestre\n", semestres[i].ano, semestres[i].semestre);
+            fprintf(report_file, "Total de Insumos Tratados: %.2f kg\n", semestres[i].total_quantidade);
+            fprintf(report_file, "Número de Registros: %d\n", semestres[i].count_registros);
+            fprintf(report_file, "------------------------------------------\n");
+        }
+
+        // Totais gerais
+        double total_geral = 0;
+        int registros_total = 0;
+        for (int i = 0; i < semestre_count; i++)
+        {
+            total_geral += semestres[i].total_quantidade;
+            registros_total += semestres[i].count_registros;
+        }
+
+        fprintf(report_file, "\nRESUMO GERAL:\n");
+        fprintf(report_file, "Total Geral de Insumos: %.2f kg\n", total_geral);
+        fprintf(report_file, "Total de Registros: %d\n", registros_total);
+        fprintf(report_file, "Períodos Analisados: %d semestres\n", semestre_count);
+    }
+
+    fclose(report_file);
+    printf("DEBUG: Relatório semestral gerado: %s\n", filename);
+}
+
+// Função para gerar relatório de gastos mensais (estimativa baseada em resíduos)
+void generate_expense_report_monthly(const char *format, const char *filename)
+{
+    printf("DEBUG: Gerando relatório mensal de gastos estimados\n");
+
+    FILE *waste_file = fopen("wastes.txt", "r");
+    if (waste_file == NULL)
+    {
+        printf("DEBUG: Arquivo wastes.txt não encontrado\n");
+        return;
+    }
+
+    // Estrutura para armazenar dados por mês
+    typedef struct
+    {
+        int ano;
+        int mes;
+        double total_quantidade;
+        double custo_estimado; // R$ 2.50 por kg (exemplo)
+        int count_registros;
+    } MesData;
+
+    MesData meses[120]; // Assumindo máximo 10 anos de dados
+    int mes_count = 0;
+    const double CUSTO_POR_KG = 2.50; // Custo estimado por kg
+
+    char line[1024];
+    while (fgets(line, sizeof(line), waste_file))
+    {
+        line[strcspn(line, "\n")] = 0;
+
+        char *tokens[5];
+        int token_count = 0;
+        char *token = strtok(line, ",");
+
+        while (token != NULL && token_count < 5)
+        {
+            tokens[token_count++] = token;
+            token = strtok(NULL, ",");
+        }
+
+        if (token_count >= 5)
+        {
+            double quantidade = strtod(tokens[2], NULL);
+            char *timestamp = tokens[4];
+
+            // Parse da data (formato: YYYY-MM-DD HH:MM:SS)
+            int ano, mes;
+            if (sscanf(timestamp, "%d-%d", &ano, &mes) == 2)
+            {
+                // Procura se já existe esse mês
+                int encontrado = -1;
+                for (int i = 0; i < mes_count; i++)
+                {
+                    if (meses[i].ano == ano && meses[i].mes == mes)
+                    {
+                        encontrado = i;
+                        break;
+                    }
+                }
+
+                if (encontrado >= 0)
+                {
+                    meses[encontrado].total_quantidade += quantidade;
+                    meses[encontrado].custo_estimado += quantidade * CUSTO_POR_KG;
+                    meses[encontrado].count_registros++;
+                }
+                else if (mes_count < 120)
+                {
+                    meses[mes_count].ano = ano;
+                    meses[mes_count].mes = mes;
+                    meses[mes_count].total_quantidade = quantidade;
+                    meses[mes_count].custo_estimado = quantidade * CUSTO_POR_KG;
+                    meses[mes_count].count_registros = 1;
+                    mes_count++;
+                }
+            }
+        }
+    }
+    fclose(waste_file);
+
+    // Gera o arquivo de acordo com o formato
+    FILE *report_file = fopen(filename, "w");
+    if (report_file == NULL)
+    {
+        printf("DEBUG: Erro ao criar arquivo de relatório\n");
+        return;
+    }
+
+    const char *nomes_meses[] = {"", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                                 "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"};
+
+    if (g_strcmp0(format, "CSV") == 0)
+    {
+        fprintf(report_file, "Ano,Mes,Nome_Mes,Quantidade_Total,Custo_Estimado,Numero_Registros\n");
+        for (int i = 0; i < mes_count; i++)
+        {
+            fprintf(report_file, "%d,%d,%s,%.2f,%.2f,%d\n",
+                    meses[i].ano, meses[i].mes, nomes_meses[meses[i].mes],
+                    meses[i].total_quantidade, meses[i].custo_estimado, meses[i].count_registros);
+        }
+    }
+    else if (g_strcmp0(format, "XLS") == 0)
+    {
+        // Formato CSV compatível com Excel
+        fprintf(report_file, "Ano\tMês\tNome do Mês\tQuantidade Total (kg)\tCusto Estimado (R$)\tNúmero de Registros\n");
+        for (int i = 0; i < mes_count; i++)
+        {
+            fprintf(report_file, "%d\t%d\t%s\t%.2f\tR$ %.2f\t%d\n",
+                    meses[i].ano, meses[i].mes, nomes_meses[meses[i].mes],
+                    meses[i].total_quantidade, meses[i].custo_estimado, meses[i].count_registros);
+        }
+    }
+    else // TXT
+    {
+        fprintf(report_file, "==========================================\n");
+        fprintf(report_file, "RELATÓRIO DE GASTOS MENSAIS ESTIMADOS\n");
+        fprintf(report_file, "==========================================\n");
+        fprintf(report_file, "Base de cálculo: R$ %.2f por kg de resíduo\n\n", CUSTO_POR_KG);
+
+        for (int i = 0; i < mes_count; i++)
+        {
+            fprintf(report_file, "%s/%d\n", nomes_meses[meses[i].mes], meses[i].ano);
+            fprintf(report_file, "Quantidade Processada: %.2f kg\n", meses[i].total_quantidade);
+            fprintf(report_file, "Custo Estimado: R$ %.2f\n", meses[i].custo_estimado);
+            fprintf(report_file, "Número de Registros: %d\n", meses[i].count_registros);
+            fprintf(report_file, "------------------------------------------\n");
+        }
+
+        // Totais gerais
+        double total_quantidade = 0;
+        double total_custo = 0;
+        int total_registros = 0;
+        for (int i = 0; i < mes_count; i++)
+        {
+            total_quantidade += meses[i].total_quantidade;
+            total_custo += meses[i].custo_estimado;
+            total_registros += meses[i].count_registros;
+        }
+
+        fprintf(report_file, "\nRESUMO GERAL:\n");
+        fprintf(report_file, "Quantidade Total: %.2f kg\n", total_quantidade);
+        fprintf(report_file, "Custo Total Estimado: R$ %.2f\n", total_custo);
+        fprintf(report_file, "Total de Registros: %d\n", total_registros);
+        fprintf(report_file, "Períodos Analisados: %d meses\n", mes_count);
+
+        if (mes_count > 0)
+        {
+            fprintf(report_file, "Custo Médio Mensal: R$ %.2f\n", total_custo / mes_count);
+        }
+    }
+
+    fclose(report_file);
+    printf("DEBUG: Relatório mensal de gastos gerado: %s\n", filename);
+}
+
+void on_report_view_btn_clicked(GtkWidget *widget, gpointer data)
+{
+    printf("DEBUG: Botão gerar relatório clicado\n");
+
+    // Obtém o ComboBox do tipo de relatório
+    GtkWidget *report_type_combo = GTK_WIDGET(gtk_builder_get_object(builder, "report_type_combo_box"));
+    if (!report_type_combo)
+    {
+        printf("DEBUG: Erro ao obter report_type_combo_box\n");
+        advice("Erro", "Erro interno da aplicação.", "dialog-error");
+        return;
+    }
+
+    // Obtém o tipo selecionado usando gtk_combo_box_get_active para GtkComboBox simples
+    int active_index = gtk_combo_box_get_active(GTK_COMBO_BOX(report_type_combo));
+    if (active_index == -1)
+    {
+        advice("Erro", "Por favor, selecione um tipo de relatório.", "dialog-error");
+        return;
+    }
+
+    // Define os tipos de relatório baseado no índice
+    char *selected_type = NULL;
+    if (active_index == 0)
+    {
+        selected_type = "Total de insumos tratados semestralmente";
+    }
+    else if (active_index == 1)
+    {
+        selected_type = "Total de gastos mensais";
+    }
+    else
+    {
+        advice("Erro", "Tipo de relatório não reconhecido.", "dialog-error");
+        return;
+    }
+
+    printf("DEBUG: Tipo de relatório selecionado: %s (índice: %d)\n", selected_type, active_index);
+
+    // Obtém os radio buttons de formato
+    GtkWidget *txt_radio = GTK_WIDGET(gtk_builder_get_object(builder, "report_format_txt_radio"));
+    GtkWidget *xls_radio = GTK_WIDGET(gtk_builder_get_object(builder, "report_format_xls_radio"));
+    GtkWidget *csv_radio = GTK_WIDGET(gtk_builder_get_object(builder, "report_format_csv_radio"));
+
+    if (!txt_radio || !xls_radio || !csv_radio)
+    {
+        printf("DEBUG: Erro ao obter radio buttons de formato\n");
+        advice("Erro", "Erro interno da aplicação.", "dialog-error");
+        return;
+    }
+
+    // Determina o formato selecionado
+    char *format = NULL;
+    char *extension = NULL;
+
+    if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(txt_radio)))
+    {
+        format = "TXT";
+        extension = ".txt";
+    }
+    else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(xls_radio)))
+    {
+        format = "XLS";
+        extension = ".xls";
+    }
+    else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(csv_radio)))
+    {
+        format = "CSV";
+        extension = ".csv";
+    }
+    else
+    {
+        advice("Erro", "Por favor, selecione um formato de relatório.", "dialog-error");
+        return;
+    }
+
+    printf("DEBUG: Formato selecionado: %s\n", format);
+
+    // Cria o diretório de relatórios se não existir
+    create_reports_directory();
+
+    // Gera o nome do arquivo baseado no timestamp
+    time_t rawtime;
+    struct tm *timeinfo;
+    char timestamp[50];
+    char filename[200];
+
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", timeinfo);
+
+    // Determina o tipo de relatório e gera o arquivo
+    if (g_strcmp0(selected_type, "Total de insumos tratados semestralmente") == 0)
+    {
+        snprintf(filename, sizeof(filename), "reports/relatorio_insumos_semestral_%s%s", timestamp, extension);
+        generate_waste_report_semestral(format, filename);
+    }
+    else if (g_strcmp0(selected_type, "Total de gastos mensais") == 0)
+    {
+        snprintf(filename, sizeof(filename), "reports/relatorio_gastos_mensais_%s%s", timestamp, extension);
+        generate_expense_report_monthly(format, filename);
+    }
+    else
+    {
+        advice("Erro", "Tipo de relatório não reconhecido.", "dialog-error");
+        return;
+    }
+
+    // Verifica se o arquivo foi criado
+    FILE *test_file = fopen(filename, "r");
+    if (test_file)
+    {
+        fclose(test_file);
+
+        char success_msg[300];
+        snprintf(success_msg, sizeof(success_msg), "Relatório gerado com sucesso!\nArquivo: %s", filename);
+        advice("Sucesso", success_msg, "emblem-default");
+
+        // Abre o arquivo (Windows)
+        char open_command[400];
+        snprintf(open_command, sizeof(open_command), "start \"\" \"%s\"", filename);
+        system(open_command);
+
+        printf("DEBUG: Relatório gerado e aberto: %s\n", filename);
+    }
+    else
+    {
+        advice("Erro", "Erro ao gerar o relatório. Verifique os dados.", "dialog-error");
+        printf("DEBUG: Erro ao gerar o arquivo: %s\n", filename);
+    }
+
+    gtk_stack_set_visible_child_name(stack, "view_common_user");
+}
+
+void on_report_export_btn_clicked(GtkWidget *widget, gpointer data)
+{
+    gtk_stack_set_visible_child_name(stack, "view_common_user");
+}
+
 int main(int argc, char *argv[])
 {
     gtk_init(&argc, &argv);
@@ -1226,6 +1705,10 @@ int main(int argc, char *argv[])
         "on_client_search_confirm_btn_clicked", G_CALLBACK(on_client_search_confirm_btn_clicked),
         "on_client_waste_save_back_btn_clicked", G_CALLBACK(on_client_waste_save_back_btn_clicked),
         "on_client_waste_save_btn_clicked", G_CALLBACK(on_client_waste_save_btn_clicked),
+        "on_reports_view_btn_clicked", G_CALLBACK(on_reports_view_btn_clicked),
+        "on_report_generator_back_btn_clicked", G_CALLBACK(on_report_generator_back_btn_clicked),
+        "on_report_view_btn_clicked", G_CALLBACK(on_report_view_btn_clicked),
+        "on_report_export_btn_clicked", G_CALLBACK(on_report_export_btn_clicked),
         NULL);
 
     gtk_builder_connect_signals(builder, NULL);

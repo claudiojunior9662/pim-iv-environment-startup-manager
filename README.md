@@ -37,6 +37,14 @@ Este sistema foi desenvolvido como parte do Projeto Integrado Multidisciplinar (
 - **Soma automática**: Cálculo total de resíduos por cliente
 - **Auditoria**: Registro do usuário responsável pelas operações
 
+### 📊 Sistema de Relatórios
+
+- **Relatórios semestrais**: Total de insumos tratados por semestre
+- **Relatórios mensais**: Estimativa de gastos mensais baseada em resíduos
+- **Múltiplos formatos**: Suporte para TXT, CSV e XLS
+- **Geração automática**: Criação e abertura automática dos arquivos
+- **Análises estatísticas**: Totais, médias e resumos por período
+
 ### 🔒 Segurança de Dados
 
 - **Criptografia XOR**: Proteção de dados sensíveis
@@ -144,8 +152,10 @@ pim-iv-environment-startup-manager/
 ├── users.txt                 # Base de dados de usuários
 ├── clients.txt               # Base de dados de clientes
 ├── wastes.txt                # Registros de resíduos
+├── reports/                  # Diretório de relatórios gerados
 ├── main.exe                  # Executável compilado
 ├── README.md                 # Esta documentação
+├── .gitignore                # Arquivos ignorados pelo Git
 └── LICENSE                   # Licença do projeto
 ```
 
@@ -177,7 +187,21 @@ pim-iv-environment-startup-manager/
 - Digite a quantidade de resíduos
 - Sistema atualiza automaticamente registros existentes
 
-### **5. Consultas**
+### **5. Geração de Relatórios**
+
+- Acesse "Gerar Relatórios"
+- Selecione o tipo de relatório:
+  - **Total de insumos tratados semestralmente**: Análise por semestre
+  - **Total de gastos mensais**: Estimativa de custos mensais
+- Escolha o formato de saída:
+  - **TXT**: Relatório formatado para leitura
+  - **CSV**: Dados estruturados para importação
+  - **XLS**: Formato compatível com Excel
+- Clique em "Gerar Relatório"
+- O arquivo será criado no diretório `/reports` e aberto automaticamente
+- **Organização**: Todos os relatórios são salvos em `/reports/` para melhor organização
+
+### **6. Consultas**
 
 - Use a listagem de clientes para visualizar todos os cadastros
 - Busque clientes específicos pelo CNPJ
@@ -200,6 +224,13 @@ simple_encrypt_decrypt(encrypted_cnpj, "NOVA_CHAVE_AQUI");
 2. Modifique os elementos visuais
 3. Salve o arquivo
 4. Recompile o projeto
+
+### **Gerenciamento de Relatórios**
+
+- **Localização**: Todos os relatórios são salvos em `/reports/`
+- **Limpeza**: Para limpar relatórios antigos, delete o conteúdo da pasta `/reports/`
+- **Backup**: Faça backup dos relatórios importantes antes da limpeza
+- **Git**: O diretório `/reports/` está no `.gitignore` para não versionar arquivos gerados
 
 ### **Formato dos Arquivos de Dados**
 
@@ -262,8 +293,9 @@ Desenvolvido como parte do **Projeto Integrado Multidisciplinar IV (PIM IV)** - 
 - ✅ **CRUD completo de usuários**
 - ✅ **CRUD completo de clientes com criptografia**
 - ✅ **Sistema de resíduos com create/update**
+- ✅ **Sistema de relatórios com múltiplos formatos**
 - ✅ **Interface gráfica completa**
 - ✅ **Validações e tratamento de erros**
 - ✅ **Persistência em arquivos CSV**
 
-**Versão**: 1.0.0 - Pronto para produção acadêmica
+**Versão**: 1.1.0 - Sistema completo com relatórios
